@@ -27,6 +27,7 @@
 //                   np02vd/PDVD -> pd2vd/PD2VD*ChannelMap_v*.txt).
 //   out_file     : the WCT frame file (.npz/.tar/.tar.gz/.zip).
 {
+  stage: 'daq-to-frame',  // the job's stage name (required since Phlex 0.4)
   driver: {
     cpp: 'dune_daq_phlex_driver',
     uses_sources: ['daq'],  // drive the trigger records this source found

@@ -1,6 +1,6 @@
 #include "dune_daq_phlex/DaqFrameSource.hpp"
 
-#include "phlex_arrow_common/PhlexTypes.hpp"   // phlex_arrow:: aliases for verboten model types
+#include "phlex_arrow_common/PhlexSource.hpp"  // provide_if_selected (experimental-API choke point)
 #include "phlex_arrow_common/TableGroup.hpp"   // phlex_arrow::TableGroup ("wc.frame")
 
 #include "dune_daq_codec/Decode.hpp"
@@ -13,8 +13,6 @@
 #include "WireCellIface/ITrace.h"
 
 #include "phlex/concurrency.hpp"
-#include "phlex/model/products.hpp"   // phlex::detail::product_for / product_ptr / provider_function_t
-#include "phlex/model/type_id.hpp"    // phlex::detail::make_type_id
 
 #include <algorithm>
 #include <cstddef>
@@ -111,7 +109,8 @@ DaqFrameSource::DaqFrameSource(std::string input_file,
                                std::string product,
                                std::string output_layer,
                                int first_record,
-                               int max_records)
+                               int max_records,
+                               std::string stage)
   : m_file(std::make_shared<dune_daq_hdf::DaqHdf5File>(input_file))
   , m_cmap(std::make_shared<dune_daq_codec::OnlineOfflineChannelMap>(channel_map_file))
   , m_records(std::make_shared<const std::vector<dune_daq_hdf::RecordID>>(m_file->records()))
@@ -119,7 +118,13 @@ DaqFrameSource::DaqFrameSource(std::string input_file,
   , m_output_creator(std::move(output_creator))
   , m_product(std::move(product))
   , m_output_layer(std::move(output_layer))
+  , m_stage(std::move(stage))
 {
+    if (m_stage.empty() || m_stage == "CURRENT") {
+        throw std::invalid_argument(
+          "dune_daq_phlex source: 'stage' must name the data's stage "
+          "(not empty, not the reserved \"CURRENT\")");
+    }
     // Select the [start, start+count) slice of records to process.  The provider
     // maps a cell back to its record by data_cell_index::number(), so the cell
     // number stays the ORIGINAL file-order index (frame idents keep tracking the
@@ -142,24 +147,12 @@ DaqFrameSource::DaqFrameSource(std::string input_file,
     }
 }
 
-phlex::detail::provider_bundles DaqFrameSource::create_providers(
+phlex::provider_bundles DaqFrameSource::create_providers(
     const phlex::product_selector& selector)
 {
-    phlex::detail::provider_bundles bundles;
-
     // The one product this source advertises: the uniform "wc.frame" TableGroup,
-    // stamped with the configured output creator/suffix/layer and "CURRENT" stage.
-    phlex_arrow::product_specification spec{
-      phlex_arrow::algorithm_name{m_output_creator},
-      phlex_arrow::identifier{m_product},
-      phlex::detail::make_type_id<phlex_arrow::TableGroup>()};
-    phlex_arrow::identifier const layer{m_output_layer};
-    phlex_arrow::identifier const stage{std::string_view{"CURRENT"}};
-
-    if (!selector.match(spec, layer, stage)) {
-        return bundles;  // this source cannot satisfy the request
-    }
-
+    // stamped with the configured output creator/suffix/layer and the data stage.
+    //
     // libhdf5 is not thread-safe on one handle and decode is stateful per read,
     // so the provider is serial.  It captures the shared read state (open file,
     // channel map, record list) and the tick.
@@ -167,24 +160,17 @@ phlex::detail::provider_bundles DaqFrameSource::create_providers(
     auto cmap = m_cmap;
     auto records = m_records;
     auto tick = m_tick;
-    auto provider = [file, cmap, records, tick](
-                      const phlex::data_cell_index& id) -> phlex::detail::product_ptr {
-        const std::size_t ri = id.number();
-        if (ri >= records->size()) {
-            throw std::runtime_error("dune_daq_phlex: data cell number "
-                                     + std::to_string(ri) + " out of range");
-        }
-        return phlex::detail::product_for(
-          frame_table_group(*file, *cmap, (*records)[ri], tick));
-    };
-
-    bundles.push_back(phlex::detail::provider_bundle{
-      .provider_function = std::function<phlex::detail::provider_function_t>(std::move(provider)),
-      .max_concurrency = phlex::concurrency::serial,
-      .spec = std::move(spec),
-      .layer = m_output_layer,
-      .stage = "CURRENT"});
-    return bundles;
+    return phlex_arrow::provide_if_selected<phlex_arrow::TableGroup>(
+      selector, m_output_creator, m_product, m_output_layer, m_stage,
+      phlex::concurrency::serial,
+      [file, cmap, records, tick](const phlex::data_cell_index& id) {
+          const std::size_t ri = id.number();
+          if (ri >= records->size()) {
+              throw std::runtime_error("dune_daq_phlex: data cell number "
+                                       + std::to_string(ri) + " out of range");
+          }
+          return frame_table_group(*file, *cmap, (*records)[ri], tick);
+      });
 }
 
 phlex::index_generator DaqFrameSource::indices()

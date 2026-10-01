@@ -1,7 +1,7 @@
 #ifndef DUNE_DAQ_PHLEX_DAQFRAMESOURCE_HPP
 #define DUNE_DAQ_PHLEX_DAQFRAMESOURCE_HPP
 
-// Phlex 0.3.2 source: read a DUNE DAQ HDF5 file, decode its TPC ADC fragments,
+// Phlex (>= 0.4.1) source: read a DUNE DAQ HDF5 file, decode its TPC ADC fragments,
 // and emit one Arrow "wc.frame" product (phlex_arrow::TableGroup) per DAQ
 // trigger record.  (beads ddm-3j8.1.6)
 //
@@ -17,7 +17,7 @@
 // dune-daq-arrow-frame-hdf ToFrame logic; that package exports no CMake target
 // (it installs only its tool), so the ~25 lines are reproduced in the .cpp.
 //
-// A DaqFrameSource is a phlex::source (the official 0.3.x extension point).  It:
+// A DaqFrameSource is a phlex::source (the official extension point).  It:
 //   * OWNS the open DAQ file + the parsed channel map (the shared read state),
 //   * create_providers(selector): the implicit-provider FACTORY.  The framework
 //     calls it with each downstream input product_selector; ours advertises the
@@ -27,18 +27,21 @@
 //     colluding file-driven driver (DriverModule.cpp) drives exactly those cells
 //     -- the cell count comes from the file, never from config.
 //
-// The provider ABI (phlex::detail::provider_bundle / product_specification /
-// product_ptr) is the one unavoidable "verboten"-named surface; it is spelled
-// exactly as Phlex's own FORM source and the sibling phlex-arrow-hdf source do,
-// and is confined to this file + phlex-arrow-common's PhlexTypes.hpp aliases.
+// phlex::source and phlex::provider_bundles are public (stable `phlex::`) as of
+// Phlex 0.4.  Filling a bundle needs Phlex's experimental erased-product API;
+// that is confined to phlex-arrow-common's PhlexSource.hpp (provide_if_selected),
+// so this package names no phlex::detail or phlex::experimental type.
+//
+// Stage: since Phlex 0.4 an implicit provider must carry a real stage name
+// (not the reserved "CURRENT") -- the `stage` source config key, default "daq"
+// (raw DAQ data is the first processing stage).
 
 #include "dune_daq_hdf/DaqHdf5File.hpp"
 #include "dune_daq_codec/OnlineOfflineChannelMap.hpp"
 
-#include "phlex/core/product_selector.hpp"
 #include "phlex/model/data_cell_index.hpp"
 #include "phlex/model/index_generator.hpp"
-#include "phlex/source.hpp"
+#include "phlex/source.hpp"  // phlex::source, provider_bundles, product_selector
 
 #include <memory>
 #include <string>
@@ -62,6 +65,7 @@ class DaqFrameSource : public phlex::source {
     ///                      to process (clamped to [0, n_records]).
     /// `max_records`      : maximum number of records to process from
     ///                      `first_record`; <= 0 means all remaining.
+    /// `stage`            : the stage the emitted product carries (not "CURRENT").
     DaqFrameSource(std::string input_file,
                    std::string channel_map_file,
                    double tick,
@@ -69,10 +73,11 @@ class DaqFrameSource : public phlex::source {
                    std::string product,
                    std::string output_layer,
                    int first_record = 0,
-                   int max_records = 0);
+                   int max_records = 0,
+                   std::string stage = "daq");
 
     // --- phlex::source interface --------------------------------------------
-    phlex::detail::provider_bundles create_providers(
+    phlex::provider_bundles create_providers(
         const phlex::product_selector& selector) override;
     phlex::index_generator indices() override;
 
@@ -89,6 +94,7 @@ class DaqFrameSource : public phlex::source {
     std::string m_output_creator;
     std::string m_product;
     std::string m_output_layer;
+    std::string m_stage;
 
     std::vector<phlex::data_cell_index_ptr> m_cells;  // one per record (number = index)
 };

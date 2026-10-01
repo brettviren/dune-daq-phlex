@@ -31,9 +31,9 @@ The end-to-end chain mirrors the non-Phlex `daq_hdf_to_arrow` tool in
 `dune-daq-arrow-frame-hdf`, but delivered as an in-graph Phlex source instead of
 a standalone program.
 
-## Source + driver (Phlex 0.3.2)
+## Source + driver (Phlex >= 0.4.1)
 
-Phlex 0.3.2 supports the source/driver model as first-class, non-stub features,
+Phlex (since 0.3.2) supports the source/driver model as first-class features,
 so this package uses it (rather than the `PHLEX_REGISTER_PROVIDERS` +
 `generate_layers` fallback):
 
@@ -47,11 +47,12 @@ so this package uses it (rather than the `PHLEX_REGISTER_PROVIDERS` +
   run time, never from config.  The job supplies only the layer *shape*
   (`layers: ['event']`).
 
-> When Phlex 0.4.x changes the source/driver API, only `DaqFrameSource.*`,
-> `SourceModule.cpp`, and `DriverModule.cpp` need revisiting; the read/decode/
-> frame logic is API-agnostic.  `phlex/driver.hpp` is not installed by Phlex
-> 0.3.2, so a verbatim copy is vendored under `vendor/` and used only when the
-> real header is absent (same stopgap as `phlex-arrow-hdf`).
+> Ported to Phlex 0.4.1: the source uses the public `phlex::source` /
+> `phlex::provider_bundles` and phlex-arrow-common's `provide_if_selected()`
+> (no `phlex::detail`), and the installed `phlex/driver.hpp` (the vendored
+> stopgap copy is gone).  Phlex 0.4 requires implicit providers to carry a real
+> stage, so the source has a `stage` key (default `daq`), and jobs must set a
+> top-level `stage`.
 
 ## Plugin config keys
 
@@ -65,6 +66,7 @@ so this package uses it (rather than the `PHLEX_REGISTER_PROVIDERS` +
 | `product` | no | `frame` | emitted product suffix |
 | `output_creator` | no | `input` | creator label on the emitted product |
 | `output_layer` | no | `event` | Phlex layer the product + its data cell live in |
+| `stage` | no | `daq` | stage the emitted product carries (not `CURRENT`) |
 
 `driver`:
 

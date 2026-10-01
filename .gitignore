@@ -3,3 +3,7 @@ builds/
 *.o
 *.so
 build*
+
+# A global gitignore may ignore *.txt/*.json; never ignore the build files.
+!CMakeLists.txt
+!CMakePresets.json

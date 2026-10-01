@@ -25,6 +25,8 @@
 //                  first trigger record to process.
 //   max_records    (int, optional, default 0): max records to process from
 //                  first_record; <= 0 means all remaining.
+//   stage          (string, optional, default "daq"): the stage the emitted
+//                  product carries.  Phlex >= 0.4 rejects the reserved "CURRENT".
 
 #include "dune_daq_phlex/DaqFrameSource.hpp"
 
@@ -43,6 +45,7 @@ PHLEX_REGISTER_SOURCE(s, config)
     auto const output_layer = config.get<std::string>("output_layer", std::string{"event"});
     auto const first_record = config.get<int>("first_record", 0);
     auto const max_records = config.get<int>("max_records", 0);
+    auto const stage = config.get<std::string>("stage", std::string{"daq"});
 
     // Register under the source's configuration label (the "sources" section
     // key, supplied by the framework as module_label) so a driver's
@@ -51,5 +54,5 @@ PHLEX_REGISTER_SOURCE(s, config)
 
     s.add_source<dune_daq_phlex::DaqFrameSource>(
       label, input_file, channel_map, tick, output_creator, product, output_layer,
-      first_record, max_records);
+      first_record, max_records, stage);
 }
